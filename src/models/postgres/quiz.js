@@ -34,3 +34,21 @@ export const questions = pgTable("questions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// User quiz results table
+export const userQuizResults = pgTable("user_quiz_results", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  quizId: integer("quiz_id").references(() => quizzes.id, {
+    onDelete: "set null",
+  }),
+  quizTitle: varchar("quiz_title", { length: 255 }).notNull(),
+  quizTopic: varchar("quiz_topic", { length: 100 }).notNull(),
+  totalQuestions: integer("total_questions").notNull(),
+  correctAnswers: integer("correct_answers").notNull(),
+  score: integer("score").notNull(), // percentage score
+  answers: json("answers").notNull(), // array of user answers and correct answers
+  completedAt: timestamp("completed_at").notNull().defaultNow(),
+});

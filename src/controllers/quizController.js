@@ -1,6 +1,10 @@
 import { db } from "../config/dbPostgres.js";
-import { quizzes, questions } from "../models/postgres/quiz.js";
-import { eq, sql } from "drizzle-orm";
+import {
+  quizzes,
+  questions,
+  userQuizResults,
+} from "../models/postgres/quiz.js";
+import { eq, sql, desc } from "drizzle-orm";
 
 export const startQuiz = async (req, res) => {
   try {
@@ -238,6 +242,23 @@ export const submitQuizAnswer = async (req, res) => {
         (correctAnswers / quizSession.totalQuestions) * 100
       );
 
+      // Save quiz result to database
+      try {
+        await db.insert(userQuizResults).values({
+          userId: userId,
+          quizId: quizSession.quiz.id === "mixed" ? null : quizSession.quiz.id,
+          quizTitle: quizSession.quiz.title,
+          quizTopic: quizSession.quiz.topic,
+          totalQuestions: quizSession.totalQuestions,
+          correctAnswers: correctAnswers,
+          score: score,
+          answers: quizSession.answers,
+        });
+      } catch (dbError) {
+        console.error("Error saving quiz result to database:", dbError);
+        // Continue with response even if database save fails
+      }
+
       return res.json({
         submitted: true,
         isCorrect,
@@ -263,6 +284,67 @@ export const submitQuizAnswer = async (req, res) => {
     });
   } catch (error) {
     console.error("Error submitting quiz answer:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+export const getUserQuizHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 20, offset = 0 } = req.query;
+
+    // Validate pagination parameters
+    const limitNum = parseInt(limit, 10);
+    const offsetNum = parseInt(offset, 10);
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        error: "Limit must be a number between 1 and 100",
+      });
+    }
+
+    if (isNaN(offsetNum) || offsetNum < 0) {
+      return res.status(400).json({
+        error: "Offset must be a non-negative number",
+      });
+    }
+
+    // Fetch user's quiz history from database
+    const quizHistory = await db
+      .select({
+        id: userQuizResults.id,
+        quizTitle: userQuizResults.quizTitle,
+        quizTopic: userQuizResults.quizTopic,
+        totalQuestions: userQuizResults.totalQuestions,
+        correctAnswers: userQuizResults.correctAnswers,
+        score: userQuizResults.score,
+        completedAt: userQuizResults.completedAt,
+      })
+      .from(userQuizResults)
+      .where(eq(userQuizResults.userId, userId))
+      .orderBy(desc(userQuizResults.completedAt))
+      .limit(limitNum)
+      .offset(offsetNum);
+
+    // Get total count for pagination
+    const [totalCount] = await db
+      .select({ count: sql`count(*)` })
+      .from(userQuizResults)
+      .where(eq(userQuizResults.userId, userId));
+
+    return res.json({
+      quizHistory,
+      pagination: {
+        total: parseInt(totalCount.count),
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < parseInt(totalCount.count),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user quiz history:", error);
     return res.status(500).json({
       error: "Internal server error",
     });
