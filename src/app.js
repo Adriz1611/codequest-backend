@@ -25,7 +25,6 @@ app.use(
 );
 app.use(express.json());
 
-// Use custom Postgres-based session store via DrizzleSessionStore
 const pgStore = new DrizzleSessionStore();
 
 app.use(
@@ -51,8 +50,7 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Swagger documentation
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api", routes);
 
