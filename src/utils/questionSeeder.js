@@ -344,6 +344,48 @@ An input string is valid if:
     isVerified: true,
     source: "LeetCode 20. Valid Parentheses",
   },
+  {
+    title: "Hello World",
+    slug: "hello-world",
+    description: `Write a function that returns the string "Hello, World!".
+
+This is a simple problem to test basic output functionality.`,
+    difficulty: {
+      level: "Easy",
+      score: 1,
+    },
+    examples: [
+      {
+        input: "No input required",
+        output: '"Hello, World!"',
+        explanation: "Simply return the exact string 'Hello, World!'",
+      },
+    ],
+    constraints: {
+      timeLimit: 1000,
+      memoryLimit: 128,
+      inputConstraints: [
+        "No input parameters required.",
+        "Function should return a string.",
+      ],
+    },
+    testCases: [
+      {
+        input: "",
+        expectedOutput: "Hello, World!",
+        isHidden: false,
+      },
+    ],
+    tags: ["string", "basic"],
+    category: "String",
+    hints: [
+      "This is a simple string return problem.",
+      "Make sure to return the exact string with correct capitalization and punctuation.",
+    ],
+    isActive: true,
+    isVerified: true,
+    source: "Custom - Single Test Case Example",
+  },
 ];
 
 /**

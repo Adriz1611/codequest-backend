@@ -12,9 +12,10 @@ import swaggerSpec from "./config/swagger.js";
 const app = express();
 dotenv.config();
 
+// Enable CORS for frontend and local API docs
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: [process.env.FRONTEND_URL, process.env.BASE_URL],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })

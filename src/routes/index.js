@@ -18,7 +18,7 @@ router.use("/quiz", quizRoutes);
 
 router.use("/questions", questionRoutes);
 
-router.use("/", judgeRoutes);
+router.use("/judge", judgeRoutes);
 
 router.get("/health", (req, res) => {
   res.json({

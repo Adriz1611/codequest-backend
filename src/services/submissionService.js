@@ -29,7 +29,7 @@ class SubmissionService {
       testcases,
     } = submissionData;
 
-    // Convert languageId to language name for internal consistency
+    // Convert languageId to language object for MongoDB
     const languageMap = {
       71: "python",
       63: "javascript",
@@ -37,23 +37,20 @@ class SubmissionService {
       54: "cpp",
       50: "c",
     };
-
-    const language = languageMap[languageId] || "python";
+    const languageName = languageMap[languageId] || "python";
+    const language = { id: languageId, name: languageName };
 
     try {
       const submission = await Submission.create({
         questionId,
         userId,
-        code,
+        sourceCode: code, // Fix: use sourceCode instead of code
         language,
-        status: {
-          id: 1, // In Queue
-          description: "In Queue",
-        },
+        status: { id: 1, description: "In Queue" },
         tokens: tokens || [],
         isCompleted: false,
-        stdin: stdin,
-        expectedOutput: expectedOutput,
+        stdin,
+        expectedOutput,
         testCases: testcases,
         submissionType: testcases ? "batch" : "single",
       });

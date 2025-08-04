@@ -68,9 +68,13 @@ function validateSubmissionInput(
  * Submit code for execution via Judge0 API
  */
 export async function submitCode(req, res) {
+  console.log("🔍 Received submit request");
+  console.log("🔍 Request body:", JSON.stringify(req.body, null, 2));
+
   const {
     code,
     languageId,
+    language,
     stdin,
     expectedOutput,
     testcases,
@@ -79,10 +83,43 @@ export async function submitCode(req, res) {
     contestId,
   } = req.body;
 
+  console.log("🔍 Extracted parameters:", {
+    code: code?.length,
+    language,
+    languageId,
+    questionId,
+  });
+
+  // Handle both language string and languageId integer
+  let finalLanguageId = languageId;
+  if (!finalLanguageId && language) {
+    console.log("🔍 Converting language string to ID:", language);
+    // Convert language string to language ID using the service mapping
+    const languageMap = {
+      javascript: 63, // Node.js
+      python: 71, // Python 3
+      java: 62, // Java
+      cpp: 54, // C++
+      c: 50, // C
+      csharp: 51, // C#
+      go: 60, // Go
+      rust: 73, // Rust
+      ruby: 72, // Ruby
+      php: 68, // PHP
+      swift: 83, // Swift
+      kotlin: 78, // Kotlin
+      typescript: 74, // TypeScript
+    };
+    finalLanguageId = languageMap[language.toLowerCase()] || 71; // Default to Python
+  }
+
+  console.log("🔍 Final language ID:", finalLanguageId);
+
   // Validate input
+  console.log("🔍 Starting validation");
   const validationError = validateSubmissionInput(
     code,
-    languageId,
+    finalLanguageId,
     stdin,
     expectedOutput,
     testcases,
@@ -112,20 +149,37 @@ export async function submitCode(req, res) {
     // If questionId is provided, get test cases from the question
     if (questionId) {
       try {
-        const question = await QuestionService.getQuestionById(questionId);
-        if (!question) {
-          return res.status(404).json({ error: "Question not found" });
-        }
-
-        finalTestCases = question.testCases || [];
+        // Retrieve test cases for the question
+        finalTestCases = await QuestionService.getQuestionTestCases(questionId);
         submissionType = "batch";
       } catch (error) {
-        console.error("Failed to get question:", error);
-        return res.status(500).json({ error: "Failed to retrieve question" });
+        console.error("Failed to get question test cases:", error);
+        if (error.message === "Question not found") {
+          return res.status(404).json({ error: "Question not found" });
+        }
+        return res
+          .status(500)
+          .json({ error: "Failed to retrieve question test cases" });
       }
     } else if (testcases && testcases.length > 0) {
       submissionType = "batch";
     }
+
+    // Validate we have test cases for batch submission
+    if (
+      submissionType === "batch" &&
+      (!finalTestCases || finalTestCases.length === 0)
+    ) {
+      return res
+        .status(400)
+        .json({ error: "No test cases found for batch submission" });
+    }
+
+    console.log(
+      "🔍 Final test cases:",
+      JSON.stringify(finalTestCases, null, 2)
+    );
+    console.log("🔍 Submission type:", submissionType);
 
     // Prepare Judge0 submission data
     const judge0BaseUrl = process.env.JUDGE0_BASE_URL;
@@ -133,23 +187,59 @@ export async function submitCode(req, res) {
     let tokens = [];
 
     if (submissionType === "batch") {
-      // Batch submission to Judge0
-      const batchUrl = `${judge0BaseUrl}/submissions/batch?base64_encoded=false&wait=false`;
-      const batchData = finalTestCases.map((tc) => ({
-        source_code: code,
-        language_id: languageId,
-        stdin: tc.input || tc.stdin,
-        ...(callbackUrl && { callback_url: callbackUrl }),
-      }));
+      // For now, let's submit individual requests instead of batch
+      // to avoid the batch API formatting issues
+      const individualTokens = [];
 
-      const response = await axios.post(batchUrl, batchData, {
-        headers: { "Content-Type": "application/json" },
-      });
+      // Filter out any invalid test cases
+      const validTestCases = finalTestCases.filter(
+        (tc) =>
+          (tc && tc.stdin !== undefined && tc.stdin !== null) ||
+          (tc.input !== undefined && tc.input !== null)
+      );
 
-      const data = response.data;
-      tokens = Array.isArray(data)
-        ? data.map((r) => r.token)
-        : data.tokens || [];
+      if (validTestCases.length === 0) {
+        return res.status(400).json({ error: "No valid test cases found" });
+      }
+
+      console.log("🔍 Valid test cases count:", validTestCases.length);
+      console.log("🔍 Test cases:", JSON.stringify(validTestCases, null, 2));
+
+      // Submit each test case individually
+      const singleUrl = `${judge0BaseUrl}/submissions?base64_encoded=false&wait=false`;
+
+      for (const tc of validTestCases) {
+        const submissionData = {
+          source_code: code,
+          language_id: finalLanguageId,
+          stdin: tc.stdin || tc.input || "",
+          ...(callbackUrl && { callback_url: callbackUrl }),
+        };
+
+        console.log(
+          "🔍 Submitting individual test case:",
+          JSON.stringify(submissionData, null, 2)
+        );
+
+        try {
+          const response = await axios.post(singleUrl, submissionData, {
+            headers: { "Content-Type": "application/json" },
+            timeout: 10000, // 10 second timeout
+          });
+
+          if (response.data.token) {
+            individualTokens.push(response.data.token);
+          }
+        } catch (error) {
+          console.error(
+            "Failed to submit individual test case:",
+            error.response?.data
+          );
+          // Continue with other test cases
+        }
+      }
+
+      tokens = individualTokens;
 
       if (tokens.length === 0) {
         return res
@@ -161,13 +251,14 @@ export async function submitCode(req, res) {
       const singleUrl = `${judge0BaseUrl}/submissions?base64_encoded=false&wait=false`;
       const submissionData = {
         source_code: code,
-        language_id: languageId,
+        language_id: finalLanguageId,
         stdin: stdin || "",
         ...(callbackUrl && { callback_url: callbackUrl }),
       };
 
       const response = await axios.post(singleUrl, submissionData, {
         headers: { "Content-Type": "application/json" },
+        timeout: 10000, // 10 second timeout
       });
 
       const { token } = response.data;
@@ -182,7 +273,7 @@ export async function submitCode(req, res) {
       const submission = await SubmissionService.createSubmission({
         userId,
         code,
-        languageId,
+        languageId: finalLanguageId,
         stdin: submissionType === "single" ? stdin : undefined,
         expectedOutput:
           submissionType === "single" ? expectedOutput : undefined,
@@ -205,27 +296,99 @@ export async function submitCode(req, res) {
     }
   } catch (error) {
     console.error("Submit code error:", error);
+    console.error("Error details:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      url: error.config?.url,
+    });
+
     if (error.response?.status === 429) {
       return res
         .status(429)
         .json({ error: "Rate limit exceeded. Please try again later." });
     }
-    return res.status(500).json({ error: "Failed to submit code to Judge0" });
+
+    // Provide more specific error message
+    const errorMessage =
+      error.response?.data?.error ||
+      error.message ||
+      "Failed to submit code to Judge0";
+    return res.status(500).json({
+      error: "Failed to submit code to Judge0",
+      details: errorMessage,
+      judge0Status: error.response?.status,
+    });
   }
 }
 
 /**
- * GET /submissions/:token
- * Get submission status by token
+ * GET /submission/:submissionId
+ * Get submission status by submission ID
  */
 export async function getSubmission(req, res) {
+  const { submissionId } = req.params;
+  if (!submissionId) {
+    return res.status(400).json({ error: "Submission ID is required" });
+  }
+
+  try {
+    // Get submission from MongoDB by ID
+    const submission = await SubmissionService.getSubmission(submissionId);
+    if (!submission) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    // Return the submission data
+    return res.json({
+      success: true,
+      message: "Submission retrieved successfully",
+      data: {
+        _id: submission._id,
+        submissionId: submission._id,
+        userId: submission.userId,
+        questionId: submission.questionId,
+        sourceCode: submission.sourceCode,
+        language: submission.language,
+        status: submission.status,
+        verdict: submission.verdict,
+        stdout: submission.stdout,
+        stderr: submission.stderr,
+        executionTime: submission.executionTime,
+        memoryUsed: submission.memoryUsed,
+        compileOutput: submission.compileOutput,
+        tokens: submission.tokens,
+        submissionType: submission.submissionType,
+        testCases: submission.testCases,
+        batchSummary: submission.batchSummary,
+        isCompleted: submission.isCompleted,
+        createdAt: submission.createdAt,
+        completedAt: submission.completedAt,
+        question: submission.questionId,
+      },
+    });
+  } catch (error) {
+    console.error("Get submission error:", error);
+    return res.status(500).json({
+      error: "Failed to retrieve submission",
+      details: error.message,
+    });
+  }
+}
+
+/**
+ * GET /submission/token/:token
+ * Get submission status by Judge0 token (Judge0 standard)
+ */
+export async function getSubmissionByToken(req, res) {
   const { token } = req.params;
   if (!token) {
     return res.status(400).json({ error: "Token is required" });
   }
 
   try {
-    // Get submission from MongoDB
+    // Get submission from MongoDB by token
     const submission = await SubmissionService.getSubmissionByToken(token);
     if (!submission) {
       return res.status(404).json({ error: "Submission not found" });

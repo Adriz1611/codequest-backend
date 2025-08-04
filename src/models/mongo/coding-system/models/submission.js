@@ -18,7 +18,6 @@ import {
   applyMiddleware,
 } from "../config/submissionConfig.js";
 
-
 const submissionSchema = new mongoose.Schema(
   {
     // Reference to PostgreSQL user ID
@@ -34,12 +33,10 @@ const submissionSchema = new mongoose.Schema(
       {
         type: String,
         required: true,
-        unique: true,
         description: "Judge0 submission tokens",
+        // Unique index will be applied via sparse index in submissionConfig
       },
     ],
-
-    // Source code details
     sourceCode: {
       type: String,
       required: true,
