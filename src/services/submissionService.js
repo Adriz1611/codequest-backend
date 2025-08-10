@@ -161,6 +161,71 @@ class SubmissionService {
   }
 
   /**
+   * Update submission with Judge0 callback data using token
+   */
+  async updateSubmissionByToken(token, judge0CallbackData) {
+    try {
+      // Find submission by token
+      const submission = await Submission.findOne({
+        tokens: { $in: [token] },
+      });
+
+      if (!submission) {
+        console.warn(`No submission found for token: ${token}`);
+        return null;
+      }
+
+      console.log(`Found submission ${submission._id} for token: ${token}`);
+
+      // Update submission with callback data
+      const {
+        stdout = "",
+        stderr = "",
+        status,
+        time,
+        memory,
+        compile_output = "",
+        finished_at,
+      } = judge0CallbackData;
+
+      // Update basic fields
+      if (stdout) submission.stdout = stdout;
+      if (stderr) submission.stderr = stderr;
+      if (status) submission.status = status;
+      if (time) submission.executionTime = parseFloat(time);
+      if (memory) submission.memoryUsed = parseInt(memory);
+      if (compile_output) submission.compileOutput = compile_output;
+
+      // Mark as completed if finished
+      if (
+        finished_at ||
+        status?.description === "Accepted" ||
+        (status?.id && status.id >= 3)
+      ) {
+        submission.isCompleted = true;
+        submission.completedAt = new Date();
+
+        // Set verdict based on status
+        if (status?.id === 3) {
+          submission.verdict = "Accepted";
+        } else if (status?.description) {
+          submission.verdict = status.description;
+        }
+      }
+
+      await submission.save();
+      console.log(
+        `Successfully updated submission ${submission._id} with callback data`
+      );
+
+      return submission;
+    } catch (error) {
+      console.error("Update submission by token error:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Update submission with Judge0 results
    */
   async updateSubmissionFromJudge0(submissionId, judge0Results) {

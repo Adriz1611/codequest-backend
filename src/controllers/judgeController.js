@@ -646,8 +646,8 @@ export async function handleCallback(req, res) {
   }
 
   try {
-    // Update submission in MongoDB
-    const submission = await SubmissionService.updateSubmissionFromJudge0(
+    // Update submission in MongoDB by token
+    const submission = await SubmissionService.updateSubmissionByToken(
       token,
       req.body
     );
